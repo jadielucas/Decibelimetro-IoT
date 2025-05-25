@@ -1,5 +1,7 @@
 import React, { useEffect, useState } from 'react'
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts'
+import {
+  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer
+} from 'recharts'
 
 function GraficoDecibeis({ sensor }) {
   const [dados, setDados] = useState([])
@@ -16,7 +18,9 @@ function GraficoDecibeis({ sensor }) {
         const processedData = data
           .map(item => ({
             ...item,
-            value: Number(item.avg_db),
+            min_db: Number(item.min_db),
+            avg_db: Number(item.avg_db),
+            max_db: Number(item.max_db),
             timestamp: new Date(item.timestamp).getTime()
           }))
           .sort((a, b) => a.timestamp - b.timestamp)
@@ -29,18 +33,21 @@ function GraficoDecibeis({ sensor }) {
   return (
     <div style={{ height: '100%' }}>
       <h3 style={{ marginBottom: '15px', color: '#333' }}>
-        Microcontrolador #{sensor?.microcontroller_id} - Histórico de Decibéis
+        Microcontrolador #{sensor?.microcontroller_id} - Níveis de Decibéis
       </h3>
-      
+
       {dados.length === 0 ? (
         <p style={{ textAlign: 'center' }}>Carregando dados...</p>
       ) : (
         <ResponsiveContainer width="100%" height="85%">
-          <BarChart data={dados} margin={{ top: 5, right: 30, left: 20, bottom: 5 }}>
+          <BarChart
+            data={dados}
+            margin={{ top: 5, right: 30, left: 20, bottom: 5 }}
+          >
             <CartesianGrid strokeDasharray="3 3" stroke="#eee" />
             <XAxis
               dataKey="timestamp"
-              tickFormatter={(ts) => 
+              tickFormatter={(ts) =>
                 new Date(ts).toLocaleTimeString('pt-BR', {
                   hour: '2-digit',
                   minute: '2-digit'
@@ -49,14 +56,14 @@ function GraficoDecibeis({ sensor }) {
               padding={{ left: 20, right: 20 }}
             />
             <YAxis domain={['auto', 'auto']} />
-            <Tooltip 
+            <Tooltip
               contentStyle={{
                 backgroundColor: '#fff',
                 border: '1px solid #ddd',
                 borderRadius: '4px',
                 boxShadow: '0 2px 4px rgba(0,0,0,0.1)'
               }}
-              labelFormatter={(ts) => 
+              labelFormatter={(ts) =>
                 new Date(ts).toLocaleString('pt-BR', {
                   day: '2-digit',
                   month: 'short',
@@ -66,10 +73,10 @@ function GraficoDecibeis({ sensor }) {
                 })
               }
             />
-            <Bar 
-              dataKey="value" 
-              fill="#ff7300"
-            />
+            <Legend />
+            <Bar dataKey="min_db" name="Mínimo (dB)" fill="#00C49F" radius={[4, 4, 0, 0]} />
+            <Bar dataKey="avg_db" name="Média (dB)" fill="#3399ff" radius={[4, 4, 0, 0]} />
+            <Bar dataKey="max_db" name="Máximo (dB)" fill="#FF8042" radius={[4, 4, 0, 0]} />
           </BarChart>
         </ResponsiveContainer>
       )}
