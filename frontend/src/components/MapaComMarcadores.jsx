@@ -48,7 +48,7 @@ const MapaComMarcadores = ({ onMarkerClick }) => {
           icon={icon}
         >
           <Popup>
-            <b>Microcontrolador #{report.microcontroller_id}</b><br />
+            <b>Sensor #{report.microcontroller_id}</b><br />
             Média: {report.avg_db} dB<br />
             Mínimo: {report.min_db} dB<br />
             Máximo: {report.max_db} dB<br />

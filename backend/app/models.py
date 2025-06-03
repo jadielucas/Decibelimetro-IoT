@@ -25,7 +25,7 @@ class SensorReport(Base):
     max_db = Column(Float)
     latitude = Column(Float)
     longitude = Column(Float)
-    timestamp = Column(DateTime, default=datetime.utcnow)
+    timestamp = Column(DateTime, nullable=False)
 
     microcontroller_device = relationship("Microcontroller", back_populates="reports")
 
