@@ -1,53 +1,57 @@
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.future import select # Para SQLAlchemy 1.4. Se SQLAlchemy 2.0+, use from sqlalchemy import select
-from sqlalchemy import desc, select as sql_select # Use sql_select para evitar conflito de nome se necessário
+from sqlalchemy import desc, select as sql_select
 from typing import List, Optional
+from datetime import date, datetime, timedelta # Verifique se timedelta está importado
 
-# Importe os modelos e a função de sessão do seu módulo de database
-from .database import get_async_session, Base # Supondo que Base também está aqui se precisar criar tabelas
-from .models import SensorReport, Microcontroller # Importe ambos os modelos
+from .database import get_async_session
+from .models import SensorReport, Microcontroller
 
 router = APIRouter()
 
 # --- Endpoints para Sensor Reports ---
 
-@router.get("/api/reports", response_model=List[dict]) # response_model pode ser mais específico com Pydantic
+@router.get("/api/reports", response_model=List[dict])
 async def get_sensor_reports(
     session: AsyncSession = Depends(get_async_session),
-    microcontroller_id: Optional[int] = Query(None, description="Filtrar relatórios por ID do microcontrolador"),
-    limit: int = Query(100, gt=0, le=1000, description="Número máximo de relatórios a retornar"),
-    offset: int = Query(0, ge=0, description="Número de relatórios a pular para paginação")
+    microcontroller_id: Optional[int] = Query(None, description="Filtrar por ID do microcontrolador"),
+    limit: int = Query(1000, gt=0, le=2000),
+    offset: int = Query(0, ge=0),
+    start_date: Optional[date] = Query(None, description="Data de início do filtro (YYYY-MM-DD)"),
+    end_date: Optional[date] = Query(None, description="Data de fim do filtro (YYYY-MM-DD)")
 ):
-    """
-    Retorna uma lista de relatórios de sensores, opcionalmente filtrada por ID do microcontrolador,
-    com ordenação pelos mais recentes e paginação.
-    """
     stmt = sql_select(SensorReport).order_by(desc(SensorReport.timestamp))
 
     if microcontroller_id is not None:
-        # Verificar se o microcontrolador existe antes de filtrar os relatórios
-        mc_exists_stmt = sql_select(Microcontroller.id).where(Microcontroller.id == microcontroller_id)
-        mc_result = await session.execute(mc_exists_stmt)
-        if mc_result.scalar_one_or_none() is None:
-            raise HTTPException(status_code=404, detail=f"Microcontrolador com ID {microcontroller_id} não encontrado.")
         stmt = stmt.where(SensorReport.microcontroller_id == microcontroller_id)
 
-    stmt = stmt.limit(limit).offset(offset)
+    # Lógica de filtro de data
+    if start_date:
+        stmt = stmt.where(SensorReport.timestamp >= datetime.combine(start_date, datetime.min.time()))
+    
+    if end_date:
+        stmt = stmt.where(SensorReport.timestamp < datetime.combine(end_date + timedelta(days=1), datetime.min.time()))
 
+    # ✨ NOVO: Se NENHUM filtro de data for fornecido, aplica o padrão de 1 ano.
+    if start_date is None and end_date is None:
+        one_year_ago = datetime.now() - timedelta(days=365)
+        stmt = stmt.where(SensorReport.timestamp >= one_year_ago)
+
+    stmt = stmt.limit(limit).offset(offset)
     result = await session.execute(stmt)
     reports = result.scalars().all()
-
+    
+    # O retorno continua o mesmo
     return [
         {
-            "report_id": report.id,  # ID do próprio registro de SensorReport
-            "microcontroller_id": report.microcontroller_id, # ID do microcontrolador que enviou
+            "report_id": report.id,
+            "microcontroller_id": report.microcontroller_id,
             "avg_db": report.avg_db,
             "min_db": report.min_db,
             "max_db": report.max_db,
             "latitude": report.latitude,
             "longitude": report.longitude,
-            "timestamp": report.timestamp.isoformat() # Usar .isoformat() para padronização
+            "timestamp": report.timestamp.isoformat()
         }
         for report in reports
     ]
