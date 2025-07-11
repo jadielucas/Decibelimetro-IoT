@@ -32,10 +32,10 @@ async def get_sensor_reports(
     if end_date:
         stmt = stmt.where(SensorReport.timestamp < datetime.combine(end_date + timedelta(days=1), datetime.min.time()))
 
-    # ✨ NOVO: Se NENHUM filtro de data for fornecido, aplica o padrão de 1 ano.
+    # SE NENHUM filtro de data for fornecido, aplica o padrão de 1 DIA.
     if start_date is None and end_date is None:
-        one_year_ago = datetime.now() - timedelta(days=365)
-        stmt = stmt.where(SensorReport.timestamp >= one_year_ago)
+        one_day_ago = datetime.now() - timedelta(days=1) 
+        stmt = stmt.where(SensorReport.timestamp >= one_day_ago)
 
     stmt = stmt.limit(limit).offset(offset)
     result = await session.execute(stmt)

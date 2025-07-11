@@ -1,60 +1,52 @@
-import { useEffect, useState, useMemo } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
-  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer
+  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer
 } from 'recharts';
 
-// Componente para o Tooltip personalizado
+// O componente CustomTooltip continua o mesmo de antes...
 const CustomTooltip = ({ active, payload, label }) => {
-  if (active && payload && payload.length) {
-    const data = payload[0].payload; // Acessa todos os dados do ponto
-    return (
-      <div style={{ 
-        backgroundColor: 'rgba(255, 255, 255, 0.9)', 
-        border: '1px solid #ccc', 
-        padding: '10px',
-        borderRadius: '5px'
-      }}>
-        <p style={{ margin: 0, fontWeight: 'bold' }}>
-          {new Date(label).toLocaleString('pt-BR')}
-        </p>
-        <p style={{ margin: '5px 0 0', color: '#3399ff' }}>
-          {`Média: ${data.avg_db.toFixed(2)} dB`}
-        </p>
-        <p style={{ margin: '5px 0 0', color: '#00C49F' }}>
-          {`Mínimo: ${data.min_db.toFixed(2)} dB`}
-        </p>
-        <p style={{ margin: '5px 0 0', color: '#FF8042' }}>
-          {`Máximo: ${data.max_db.toFixed(2)} dB`}
-        </p>
-      </div>
-    );
-  }
-  return null;
+    // ... (sem alterações aqui)
+    if (active && payload && payload.length) {
+        const data = payload[0].payload;
+        return (
+          <div style={{ backgroundColor: 'rgba(255, 255, 255, 0.9)', border: '1px solid #ccc', padding: '10px', borderRadius: '5px' }}>
+            <p style={{ margin: 0, fontWeight: 'bold' }}>{new Date(label).toLocaleString('pt-BR')}</p>
+            <p style={{ margin: '5px 0 0', color: '#3399ff' }}>{`Média: ${data.avg_db.toFixed(2)} dB`}</p>
+            <p style={{ margin: '5px 0 0', color: '#00C49F' }}>{`Mínimo: ${data.min_db.toFixed(2)} dB`}</p>
+            <p style={{ margin: '5px 0 0', color: '#FF8042' }}>{`Máximo: ${data.max_db.toFixed(2)} dB`}</p>
+          </div>
+        );
+      }
+      return null;
 };
 
 function GraficoDecibeis({ sensor }) {
   const [dados, setDados] = useState([]);
-  // ✨ 1. Estados para o filtro de data
-  const [dataInicio, setDataInicio] = useState('');
-  const [dataFim, setDataFim] = useState('');
+  const [loading, setLoading] = useState(true);
 
-  // O useMemo agora filtra com base nas datas selecionadas
-  const dadosFiltrados = useMemo(() => {
-    if (!dataInicio || !dataFim) {
-      return dados; // Se não houver datas, retorna todos os dados carregados
-    }
-    const inicio = new Date(dataInicio).getTime();
-    // Adiciona 1 dia ao fim para incluir o dia inteiro
-    const fim = new Date(dataFim).getTime() + (24 * 60 * 60 * 1000 - 1);
+  // Estados para controlar os inputs de data
+  const [dataInicioInput, setDataInicioInput] = useState('');
+  const [dataFimInput, setDataFimInput] = useState('');
 
-    return dados.filter(item => item.timestamp >= inicio && item.timestamp <= fim);
-  }, [dados, dataInicio, dataFim]);
+  // ✨ 1. Estado para o filtro que está ATIVO, para disparar a busca de dados
+  const [filtroAtivo, setFiltroAtivo] = useState({ inicio: null, fim: null });
 
+  // ✨ 2. O useEffect agora depende do 'filtroAtivo' para re-buscar os dados
   useEffect(() => {
     if (!sensor?.microcontroller_id) return;
     
-    // NOTA: Idealmente, o filtro de data seria feito na API. Veja a seção de otimização abaixo.
-    fetch(`http://localhost:8000/api/reports?microcontroller_id=${sensor.microcontroller_id}&limit=1000`)
+    setLoading(true);
+
+    // Constrói a URL dinamicamente com base no filtro ativo
+    let url = `http://localhost:8000/api/reports?microcontroller_id=${sensor.microcontroller_id}&limit=1000`;
+    if (filtroAtivo.inicio) {
+      url += `&start_date=${filtroAtivo.inicio}`;
+    }
+    if (filtroAtivo.fim) {
+      url += `&end_date=${filtroAtivo.fim}`;
+    }
+
+    fetch(url)
       .then(res => {
         if (!res.ok) throw new Error(`HTTP error! status: ${res.status}`);
         return res.json();
@@ -63,67 +55,69 @@ function GraficoDecibeis({ sensor }) {
         const processedData = data
           .map(item => ({
             ...item,
-            min_db: Number(item.min_db),
-            avg_db: Number(item.avg_db),
-            max_db: Number(item.max_db),
             timestamp: new Date(item.timestamp).getTime()
           }))
           .sort((a, b) => a.timestamp - b.timestamp);
         setDados(processedData);
       })
-      .catch(err => console.error("Erro na requisição:", err));
-  }, [sensor]);
+      .catch(err => {
+        console.error("Erro na requisição:", err);
+        setDados([]); // Limpa os dados em caso de erro
+      })
+      .finally(() => {
+        setLoading(false);
+      });
+  // Dispara a busca quando o sensor muda OU quando o filtro é aplicado
+  }, [sensor, filtroAtivo]);
+
+  // ✨ 3. Funções para os botões de filtro
+  const handleFiltrar = () => {
+    // Só aplica o filtro se ambas as datas estiverem preenchidas
+    if (dataInicioInput && dataFimInput) {
+      setFiltroAtivo({ inicio: dataInicioInput, fim: dataFimInput });
+    }
+  };
+
+  const handleLimparFiltro = () => {
+    setDataInicioInput('');
+    setDataFimInput('');
+    setFiltroAtivo({ inicio: null, fim: null }); // Volta ao filtro padrão (último dia)
+  };
 
   return (
     <div style={{ height: '100%' }}>
-      <h3 style={{ marginBottom: '9px', color: '#333' }}>
+      <h3 style={{ marginBottom: '15px', color: '#333' }}>
         Sensor #{sensor?.microcontroller_id} - Níveis de Decibéis
       </h3>
 
-      {/* ✨ 2. Novos inputs para o filtro de data */}
-      <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '15px', marginBottom: '20px', alignItems: 'center' }}>
-        <div>
-          <label style={{ marginRight: '8px' }}>De:</label>
-          <input 
-            type="date" 
-            value={dataInicio} 
-            onChange={(e) => setDataInicio(e.target.value)}
-            style={{ padding: '5px', borderRadius: '4px', border: '1px solid #ccc' }}
-          />
-        </div>
-        <div>
-          <label style={{ marginRight: '8px' }}>Até:</label>
-          <input 
-            type="date" 
-            value={dataFim} 
-            onChange={(e) => setDataFim(e.target.value)}
-            style={{ padding: '5px', borderRadius: '4px', border: '1px solid #ccc' }}
-          />
-        </div>
+      {/* ✨ 4. UI com botões para aplicar e limpar o filtro */}
+      <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px', marginBottom: '20px', alignItems: 'center', flexWrap: 'wrap' }}>
+        <label>De:</label>
+        <input type="date" value={dataInicioInput} onChange={(e) => setDataInicioInput(e.target.value)} />
+        <label>Até:</label>
+        <input type="date" value={dataFimInput} onChange={(e) => setDataFimInput(e.target.value)} />
+        <button onClick={handleFiltrar} style={{ padding: '5px 10px' }}>Filtrar</button>
+        <button onClick={handleLimparFiltro} style={{ padding: '5px 10px' }}>Limpar</button>
       </div>
 
-      {dados.length === 0 ? (
-        <p style={{ textAlign: 'center' }}>Carregando dados ou nenhum dado encontrado...</p>
+      {loading ? (
+        <p style={{ textAlign: 'center' }}>Carregando dados...</p>
+      ) : dados.length === 0 ? (
+        <p style={{ textAlign: 'center' }}>Nenhum dado encontrado para o período selecionado.</p>
       ) : (
         <ResponsiveContainer width="100%" height="80%">
           <BarChart
-            data={dadosFiltrados}
+            // ✨ 5. Usa 'dados' diretamente. O useMemo não é mais necessário para filtrar.
+            data={dados} 
             margin={{ top: 5, right: 30, left: 20, bottom: 5 }}
           >
+            {/* O conteúdo do BarChart continua o mesmo */}
             <CartesianGrid strokeDasharray="3 3" stroke="#eee" />
-            <XAxis
-              dataKey="timestamp"
-              tickFormatter={(ts) => new Date(ts).toLocaleDateString('pt-BR')}
-              padding={{ left: 20, right: 20 }}
-            />
+            <XAxis dataKey="timestamp" tickFormatter={(ts) => new Date(ts).toLocaleDateString('pt-BR')} padding={{ left: 20, right: 20 }} />
             <YAxis domain={['auto', 'auto']} label={{ value: 'Decibéis (dB)', angle: -90, position: 'insideLeft' }} />
-            
-            {/* ✨ 3. Tooltip personalizado e uma única barra */}
             <Tooltip content={<CustomTooltip />} cursor={{ fill: 'rgba(206, 206, 206, 0.2)' }}/>
-            
+            <Legend />
             <Bar dataKey="avg_db" name="Média (dB)" fill="#3399ff" radius={[4, 4, 0, 0]} />
-            
-            {/* As barras de mínimo e máximo foram removidas daqui */}
           </BarChart>
         </ResponsiveContainer>
       )}
