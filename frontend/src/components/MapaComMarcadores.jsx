@@ -43,7 +43,7 @@ const criarIconeDeMarcador = (cor) => {
   });
 };
 
-const MapaComMarcadores = ({ onMarkerClick }) => {
+const MapaComMarcadores = ({ onMarkerClick, children }) => {
   const [relatorios, setRelatorios] = useState([]);
 
   useEffect(() => {
@@ -52,7 +52,6 @@ const MapaComMarcadores = ({ onMarkerClick }) => {
       .then(data => {
         const vistos = new Set();
         const unicos = [];
-
         for (const r of data) {
           if (!vistos.has(r.microcontroller_id)) {
             vistos.add(r.microcontroller_id);
@@ -66,13 +65,15 @@ const MapaComMarcadores = ({ onMarkerClick }) => {
 
   return (
     <MapContainer center={[-3.7849, -38.556]} zoom={15} style={{ height: '100vh', width: '100%' }}>
+      {/* ✨ 2. Renderize os 'children' aqui dentro */}
+      {children}
+      
       <TileLayer
         attribution='&copy; OpenStreetMap contributors'
         url='https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png'
       />
-
+      
       {relatorios.map((report) => {
-
         const corDoMarcador = gerarCorParaMarcador(report.avg_db);
         const iconeDinamico = criarIconeDeMarcador(corDoMarcador);
 

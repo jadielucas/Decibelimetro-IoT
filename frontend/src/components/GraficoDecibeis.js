@@ -3,41 +3,36 @@ import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer
 } from 'recharts';
 
-// O componente CustomTooltip continua o mesmo de antes...
 const CustomTooltip = ({ active, payload, label }) => {
-    // ... (sem alterações aqui)
-    if (active && payload && payload.length) {
-        const data = payload[0].payload;
-        return (
-          <div style={{ backgroundColor: 'rgba(255, 255, 255, 0.9)', border: '1px solid #ccc', padding: '10px', borderRadius: '5px' }}>
-            <p style={{ margin: 0, fontWeight: 'bold' }}>{new Date(label).toLocaleString('pt-BR')}</p>
-            <p style={{ margin: '5px 0 0', color: '#3399ff' }}>{`Média: ${data.avg_db.toFixed(2)} dB`}</p>
-            <p style={{ margin: '5px 0 0', color: '#00C49F' }}>{`Mínimo: ${data.min_db.toFixed(2)} dB`}</p>
-            <p style={{ margin: '5px 0 0', color: '#FF8042' }}>{`Máximo: ${data.max_db.toFixed(2)} dB`}</p>
-          </div>
-        );
-      }
-      return null;
+
+  if (active && payload && payload.length) {
+    const data = payload[0].payload;
+    return (
+      <div style={{ backgroundColor: 'rgba(255, 255, 255, 0.9)', border: '1px solid #ccc', padding: '10px', borderRadius: '5px' }}>
+        <p style={{ margin: 0, fontWeight: 'bold' }}>{new Date(label).toLocaleString('pt-BR')}</p>
+        <p style={{ margin: '5px 0 0', color: '#3399ff' }}>{`Média: ${data.avg_db.toFixed(2)} dB`}</p>
+        <p style={{ margin: '5px 0 0', color: '#00C49F' }}>{`Mínimo: ${data.min_db.toFixed(2)} dB`}</p>
+        <p style={{ margin: '5px 0 0', color: '#FF8042' }}>{`Máximo: ${data.max_db.toFixed(2)} dB`}</p>
+      </div>
+    );
+  }
+  return null;
 };
 
 function GraficoDecibeis({ sensor }) {
   const [dados, setDados] = useState([]);
   const [loading, setLoading] = useState(true);
 
-  // Estados para controlar os inputs de data
   const [dataInicioInput, setDataInicioInput] = useState('');
   const [dataFimInput, setDataFimInput] = useState('');
 
-  // ✨ 1. Estado para o filtro que está ATIVO, para disparar a busca de dados
   const [filtroAtivo, setFiltroAtivo] = useState({ inicio: null, fim: null });
 
-  // ✨ 2. O useEffect agora depende do 'filtroAtivo' para re-buscar os dados
   useEffect(() => {
     if (!sensor?.microcontroller_id) return;
-    
+
     setLoading(true);
 
-    // Constrói a URL dinamicamente com base no filtro ativo
     let url = `http://localhost:8000/api/reports?microcontroller_id=${sensor.microcontroller_id}&limit=1000`;
     if (filtroAtivo.inicio) {
       url += `&start_date=${filtroAtivo.inicio}`;
@@ -62,17 +57,14 @@ function GraficoDecibeis({ sensor }) {
       })
       .catch(err => {
         console.error("Erro na requisição:", err);
-        setDados([]); // Limpa os dados em caso de erro
+        setDados([]);
       })
       .finally(() => {
         setLoading(false);
       });
-  // Dispara a busca quando o sensor muda OU quando o filtro é aplicado
   }, [sensor, filtroAtivo]);
 
-  // ✨ 3. Funções para os botões de filtro
   const handleFiltrar = () => {
-    // Só aplica o filtro se ambas as datas estiverem preenchidas
     if (dataInicioInput && dataFimInput) {
       setFiltroAtivo({ inicio: dataInicioInput, fim: dataFimInput });
     }
@@ -81,7 +73,7 @@ function GraficoDecibeis({ sensor }) {
   const handleLimparFiltro = () => {
     setDataInicioInput('');
     setDataFimInput('');
-    setFiltroAtivo({ inicio: null, fim: null }); // Volta ao filtro padrão (último dia)
+    setFiltroAtivo({ inicio: null, fim: null });
   };
 
   return (
@@ -90,7 +82,6 @@ function GraficoDecibeis({ sensor }) {
         Sensor #{sensor?.microcontroller_id} - Níveis de Decibéis
       </h3>
 
-      {/* ✨ 4. UI com botões para aplicar e limpar o filtro */}
       <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px', marginBottom: '20px', alignItems: 'center', flexWrap: 'wrap' }}>
         <label>De:</label>
         <input type="date" value={dataInicioInput} onChange={(e) => setDataInicioInput(e.target.value)} />
@@ -107,16 +98,17 @@ function GraficoDecibeis({ sensor }) {
       ) : (
         <ResponsiveContainer width="100%" height="80%">
           <BarChart
-            // ✨ 5. Usa 'dados' diretamente. O useMemo não é mais necessário para filtrar.
-            data={dados} 
+
+            data={dados}
             margin={{ top: 5, right: 30, left: 20, bottom: 5 }}
           >
-            {/* O conteúdo do BarChart continua o mesmo */}
             <CartesianGrid strokeDasharray="3 3" stroke="#eee" />
             <XAxis dataKey="timestamp" tickFormatter={(ts) => new Date(ts).toLocaleDateString('pt-BR')} padding={{ left: 20, right: 20 }} />
             <YAxis domain={['auto', 'auto']} label={{ value: 'Decibéis (dB)', angle: -90, position: 'insideLeft' }} />
-            <Tooltip content={<CustomTooltip />} cursor={{ fill: 'rgba(206, 206, 206, 0.2)' }}/>
-            <Legend />
+            <Tooltip content={<CustomTooltip />} cursor={{ fill: 'rgba(206, 206, 206, 0.2)' }} />
+            <Legend
+              wrapperStyle={{ right: 0, left: 'auto' }}
+            />
             <Bar dataKey="avg_db" name="Média (dB)" fill="#3399ff" radius={[4, 4, 0, 0]} />
           </BarChart>
         </ResponsiveContainer>
