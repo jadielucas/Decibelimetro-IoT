@@ -2,12 +2,14 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import desc, select as sql_select
 from typing import List, Optional
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, timedelta # Verifique se timedelta está importado
 
 from .database import get_async_session
-from .models import SensorReport, Microcontroller, LogEntry
+from .models import SensorReport, Microcontroller
 
 router = APIRouter()
+
+# --- Endpoints para Sensor Reports ---
 
 @router.get("/api/reports", response_model=List[dict])
 async def get_sensor_reports(
@@ -23,12 +25,14 @@ async def get_sensor_reports(
     if microcontroller_id is not None:
         stmt = stmt.where(SensorReport.microcontroller_id == microcontroller_id)
 
+    # Lógica de filtro de data
     if start_date:
         stmt = stmt.where(SensorReport.timestamp >= datetime.combine(start_date, datetime.min.time()))
-    
+
     if end_date:
         stmt = stmt.where(SensorReport.timestamp < datetime.combine(end_date + timedelta(days=1), datetime.min.time()))
 
+    # SE NENHUM filtro de data for fornecido, aplica o padrão de 1 DIA.
     if start_date is None and end_date is None:
         one_day_ago = datetime.now() - timedelta(days=1) 
         stmt = stmt.where(SensorReport.timestamp >= one_day_ago)
@@ -36,7 +40,8 @@ async def get_sensor_reports(
     stmt = stmt.limit(limit).offset(offset)
     result = await session.execute(stmt)
     reports = result.scalars().all()
-    
+
+    # O retorno continua o mesmo
     return [
         {
             "report_id": report.id,
@@ -56,7 +61,9 @@ async def get_sensor_report_details(
     report_id: int,
     session: AsyncSession = Depends(get_async_session)
 ):
-
+    """
+    Retorna os detalhes de um relatório de sensor específico.
+    """
     stmt = sql_select(SensorReport).where(SensorReport.id == report_id)
     result = await session.execute(stmt)
     report = result.scalar_one_or_none()
@@ -75,19 +82,25 @@ async def get_sensor_report_details(
         "timestamp": report.timestamp.isoformat()
     }
 
+# --- Endpoints para Microcontrollers ---
+
 @router.get("/api/microcontrollers", response_model=List[dict])
 async def list_microcontrollers(
     session: AsyncSession = Depends(get_async_session),
     limit: int = Query(100, gt=0, le=1000),
     offset: int = Query(0, ge=0)
 ):
-
+    """
+    Retorna uma lista de microcontroladores registrados.
+    """
     stmt = sql_select(Microcontroller).order_by(Microcontroller.id).limit(limit).offset(offset)
     result = await session.execute(stmt)
     microcontrollers = result.scalars().all()
     return [
         {
             "id": mc.id,
+            # Adicione outros campos do Microcontroller que você queira expor
+            # Ex: "model_name": mc.model_name (se você adicionou esse campo ao modelo)
         }
         for mc in microcontrollers
     ]
@@ -97,7 +110,9 @@ async def get_microcontroller_details(
     microcontroller_id: int,
     session: AsyncSession = Depends(get_async_session)
 ):
-    
+    """
+    Retorna detalhes de um microcontrolador específico.
+    """
     stmt = sql_select(Microcontroller).where(Microcontroller.id == microcontroller_id)
     result = await session.execute(stmt)
     mc = result.scalar_one_or_none()
@@ -105,31 +120,5 @@ async def get_microcontroller_details(
         raise HTTPException(status_code=404, detail="Microcontrolador não encontrado")
     return {
         "id": mc.id,
+        # Adicione outros campos
     }
-
-@router.get("/api/logs", response_model=List[dict])
-async def get_logs(
-    session: AsyncSession = Depends(get_async_session),
-    limit: int = Query(100, gt=0, le=1000, description="Número máximo de logs a retornar"),
-    offset: int = Query(0, ge=0, description="Número de logs a pular para paginação")
-):
-    stmt = (
-        sql_select(LogEntry)
-        .order_by(desc(LogEntry.timestamp))
-        .limit(limit)
-        .offset(offset)
-    )
-    
-    result = await session.execute(stmt)
-    logs = result.scalars().all()
-
-    return [
-        {
-            "id": log.id,
-            "level": log.level,
-            "message": log.message,
-            "timestamp": log.timestamp.isoformat(),
-            "microcontroller_id": log.microcontroller_id
-        }
-        for log in logs
-    ]

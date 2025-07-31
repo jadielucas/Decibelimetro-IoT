@@ -2,11 +2,13 @@ import paho.mqtt.client as mqtt
 import json
 import asyncio
 import logging
-from datetime import datetime
+from datetime import datetime, timezone # timezone é útil para conversões explícitas
 from typing import Optional
 
+# Certifique-se de que SessionLocal é a factory correta para AsyncSession
+# do seu arquivo database.py
 from .database import AsyncSessionLocal
-from .models import SensorReport, Microcontroller, LogEntry
+from .models import SensorReport, Microcontroller
 from sqlalchemy import select as sql_select
 
 # Configuração básica de logging
@@ -57,7 +59,7 @@ def on_message(client, userdata, msg):
         # Formato esperado do microcontrolador: "YYYY-MM-DD HH:MM:SS"
         try:
             parsed_datetime_obj = datetime.strptime(timestamp_str_from_payload, "%Y-%m-%d %H:%M:%S")
-            
+
             datetime_to_save = parsed_datetime_obj
 
         except ValueError:
@@ -88,22 +90,12 @@ def on_message(client, userdata, msg):
     except Exception as e:
         logger.error(f"❌ Erro inesperado ao processar mensagem MQTT: {e}", exc_info=True)
 
-async def create_log_entry(session, level: str, message: str, mc_id: int = None):
-    """Cria e salva uma nova entrada de log no banco de dados."""
-    log = LogEntry(
-        level=level,
-        message=message,
-        microcontroller_id=mc_id,
-        timestamp=datetime.utcnow() # Garante o uso de UTC
-    )
-    session.add(log)
-    logger.info(f"LOG GERADO: [{level}] {message}")
-
 async def save_sensor_data_to_db(mc_id: int, avg_db_val: float, min_db_val: float, max_db_val: float,
-                                 timestamp_val: datetime,
+                                 timestamp_val: datetime, # Timestamp agora é um parâmetro datetime obrigatório
                                  latitude_val: Optional[float] = None, longitude_val: Optional[float] = None):
     """
-    Salva os dados do sensor e GERA LOGS para eventos importantes.
+    Salva os dados do sensor no banco de dados.
+    Primeiro, garante que o Microcontroller exista, depois cria o SensorReport.
     """
     async with AsyncSessionLocal() as session:
         async with session.begin():
@@ -117,41 +109,27 @@ async def save_sensor_data_to_db(mc_id: int, avg_db_val: float, min_db_val: floa
                     logger.info(f"🔌 Microcontrolador com ID {mc_id} não encontrado. Criando novo...")
                     microcontroller_obj = Microcontroller(id=mc_id)
                     session.add(microcontroller_obj)
-                    
-                    # ✨ 2. GERAR LOG DE NOVO SENSOR
-                    await create_log_entry(
-                        session, 
-                        level="INFO", 
-                        message=f"Novo sensor detectado com ID {mc_id}.",
-                        mc_id=mc_id
-                    )
-                    
+
                     await session.flush()
                     await session.refresh(microcontroller_obj)
 
                 # 2. Criar o SensorReport
                 new_sensor_report = SensorReport(
-                    microcontroller_id=microcontroller_obj.id,
+                    microcontroller_id=microcontroller_obj.id, # Chave estrangeira
                     avg_db=avg_db_val,
-                    # ... (outros campos)
-                    timestamp=timestamp_val
+                    min_db=min_db_val,
+                    max_db=max_db_val,
+                    latitude=latitude_val,
+                    longitude=longitude_val,
+                    timestamp=timestamp_val # Usa o timestamp fornecido e processado
                 )
                 session.add(new_sensor_report)
-                
-                # ✨ 3. GERAR LOG DE ALERTA DE RUÍDO
-                LIMIAR_ALERTA_DB = 80.0
-                if avg_db_val > LIMIAR_ALERTA_DB:
-                    await create_log_entry(
-                        session,
-                        level="ALERTA",
-                        message=f"Sensor {mc_id} reportou ruído elevado: {avg_db_val:.2f} dB.",
-                        mc_id=mc_id
-                    )
 
-                logger.info(f"💾 Report salvo para microcontrolador ID {mc_id}...")
+                logger.info(f"💾 Report salvo para microcontrolador ID {mc_id} com timestamp {timestamp_val}: avg_db={avg_db_val:.2f} dB")
 
             except Exception as e:
                 logger.error(f"❌ Erro durante a transação do banco de dados: {e}", exc_info=True)
+                # A transação será automaticamente revertida (rollback) devido à exceção.
 
 def start_mqtt_client(event_loop: asyncio.AbstractEventLoop):
     """
@@ -161,7 +139,7 @@ def start_mqtt_client(event_loop: asyncio.AbstractEventLoop):
     main_event_loop = event_loop
 
     client_id = f"fastapi-mqtt-listener-{datetime.now().strftime('%Y%m%d%H%M%S%f')}"
-    
+
     mqtt_client = mqtt.Client(mqtt.CallbackAPIVersion.VERSION2, client_id=client_id)
     mqtt_client.on_connect = on_connect
     mqtt_client.on_message = on_message
@@ -175,4 +153,3 @@ def start_mqtt_client(event_loop: asyncio.AbstractEventLoop):
         return
 
     mqtt_client.loop_start() # Inicia uma thread separada para o loop de rede MQTT
-    logger.info("🟢 Cliente MQTT iniciado e loop de rede rodando em segundo plano.")

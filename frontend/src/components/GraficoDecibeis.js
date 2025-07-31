@@ -1,7 +1,8 @@
 import React, { useEffect, useState } from 'react';
 import {
-  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer
+  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, Cell
 } from 'recharts';
+import { gerarCorDinamica } from '../utils/colorUtils';
 
 const CustomTooltip = ({ active, payload, label }) => {
 
@@ -109,7 +110,14 @@ function GraficoDecibeis({ sensor }) {
             <Legend
               wrapperStyle={{ right: 0, left: 'auto' }}
             />
-            <Bar dataKey="avg_db" name="Média (dB)" fill="#3399ff" radius={[4, 4, 0, 0]} />
+            <Bar dataKey="avg_db" name="Média (dB)" radius={[4, 4, 0, 0]}>
+              {dados.map((entry, index) => (
+                <Cell 
+                  key={`cell-${index}`} 
+                  fill={gerarCorDinamica(entry.avg_db)}
+                />
+              ))}
+            </Bar>
           </BarChart>
         </ResponsiveContainer>
       )}
