@@ -4,6 +4,7 @@ import asyncio
 import logging
 from datetime import datetime, timezone # timezone é útil para conversões explícitas
 from typing import Optional
+from .websocket_manager import manager
 
 # Certifique-se de que SessionLocal é a factory correta para AsyncSession
 # do seu arquivo database.py
@@ -113,23 +114,41 @@ async def save_sensor_data_to_db(mc_id: int, avg_db_val: float, min_db_val: floa
                     await session.flush()
                     await session.refresh(microcontroller_obj)
 
-                # 2. Criar o SensorReport
                 new_sensor_report = SensorReport(
-                    microcontroller_id=microcontroller_obj.id, # Chave estrangeira
+                    microcontroller_id=microcontroller_obj.id,
                     avg_db=avg_db_val,
                     min_db=min_db_val,
                     max_db=max_db_val,
                     latitude=latitude_val,
                     longitude=longitude_val,
-                    timestamp=timestamp_val # Usa o timestamp fornecido e processado
+                    timestamp=timestamp_val
                 )
                 session.add(new_sensor_report)
+                
+                logger.info(f"💾 Report salvo para microcontrolador ID {mc_id}...")
 
-                logger.info(f"💾 Report salvo para microcontrolador ID {mc_id} com timestamp {timestamp_val}: avg_db={avg_db_val:.2f} dB")
+                await session.flush()
+                await session.refresh(new_sensor_report)
+
+                novo_reporte_json = {
+                    "type": "new_report", # Ajuda o frontend a identificar o tipo de mensagem
+                    "payload": {
+                        "report_id": new_sensor_report.id,
+                        "microcontroller_id": mc_id,
+                        "avg_db": avg_db_val,
+                        "min_db": min_db_val,
+                        "max_db": max_db_val,
+                        "latitude": latitude_val,
+                        "longitude": longitude_val,
+                        "timestamp": timestamp_val.isoformat() # Usar formato ISO para o frontend
+                    }
+                }
+
+                await manager.broadcast(json.dumps(novo_reporte_json))
+                logger.info(f"📢 Reporte do sensor {mc_id} enviado via WebSocket.")
 
             except Exception as e:
                 logger.error(f"❌ Erro durante a transação do banco de dados: {e}", exc_info=True)
-                # A transação será automaticamente revertida (rollback) devido à exceção.
 
 def start_mqtt_client(event_loop: asyncio.AbstractEventLoop):
     """

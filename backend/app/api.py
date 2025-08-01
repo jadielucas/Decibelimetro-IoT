@@ -1,8 +1,9 @@
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, WebSocket, WebSocketDisconnect
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import desc, select as sql_select
+from sqlalchemy import desc, select as sql_select, func
 from typing import List, Optional
 from datetime import date, datetime, timedelta # Verifique se timedelta está importado
+from .websocket_manager import manager
 
 from .database import get_async_session
 from .models import SensorReport, Microcontroller
@@ -18,24 +19,34 @@ async def get_sensor_reports(
     limit: int = Query(1000, gt=0, le=2000),
     offset: int = Query(0, ge=0),
     start_date: Optional[date] = Query(None, description="Data de início do filtro (YYYY-MM-DD)"),
-    end_date: Optional[date] = Query(None, description="Data de fim do filtro (YYYY-MM-DD)")
+    end_date: Optional[date] = Query(None, description="Data de fim do filtro (YYYY-MM-DD)"),
+    latest_positions: bool = Query(False, description="Se verdadeiro, busca apenas a última posição de cada sensor, ignorando filtros de data")
 ):
     stmt = sql_select(SensorReport).order_by(desc(SensorReport.timestamp))
 
-    if microcontroller_id is not None:
-        stmt = stmt.where(SensorReport.microcontroller_id == microcontroller_id)
+    if latest_positions:
+        subq = (
+            sql_select(func.max(SensorReport.id).label("max_id"))
+            .group_by(SensorReport.microcontroller_id)
+            .subquery()
+        )
+        stmt = sql_select(SensorReport).join(subq, SensorReport.id == subq.c.max_id)
+    else:
 
-    # Lógica de filtro de data
-    if start_date:
-        stmt = stmt.where(SensorReport.timestamp >= datetime.combine(start_date, datetime.min.time()))
+        if microcontroller_id is not None:
+            stmt = stmt.where(SensorReport.microcontroller_id == microcontroller_id)
 
-    if end_date:
-        stmt = stmt.where(SensorReport.timestamp < datetime.combine(end_date + timedelta(days=1), datetime.min.time()))
+        # Lógica de filtro de data
+        if start_date:
+            stmt = stmt.where(SensorReport.timestamp >= datetime.combine(start_date, datetime.min.time()))
 
-    # SE NENHUM filtro de data for fornecido, aplica o padrão de 1 DIA.
-    if start_date is None and end_date is None:
-        one_day_ago = datetime.now() - timedelta(days=1) 
-        stmt = stmt.where(SensorReport.timestamp >= one_day_ago)
+        if end_date:
+            stmt = stmt.where(SensorReport.timestamp < datetime.combine(end_date + timedelta(days=1), datetime.min.time()))
+
+        # SE NENHUM filtro de data for fornecido, aplica o padrão de 1 DIA.
+        if start_date is None and end_date is None:
+            one_day_ago = datetime.now() - timedelta(days=1) 
+            stmt = stmt.where(SensorReport.timestamp >= one_day_ago)
 
     stmt = stmt.limit(limit).offset(offset)
     result = await session.execute(stmt)
@@ -122,3 +133,14 @@ async def get_microcontroller_details(
         "id": mc.id,
         # Adicione outros campos
     }
+
+@router.websocket("/ws")
+async def websocket_endpoint(websocket: WebSocket):
+    await manager.connect(websocket)
+    try:
+        while True:
+            # Mantém a conexão viva, ouvindo por mensagens (não faremos nada com elas por enquanto)
+            await websocket.receive_text()
+    except WebSocketDisconnect:
+        manager.disconnect(websocket)
+        print("Cliente WebSocket desconectado")
