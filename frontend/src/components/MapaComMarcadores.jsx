@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React from 'react'; // O useState e useEffect foram removidos pois não são mais necessários
 import { gerarCorDinamica } from '../utils/colorUtils';
 import { MapContainer, TileLayer, Marker, Popup } from 'react-leaflet';
 import 'leaflet/dist/leaflet.css';
@@ -17,58 +17,40 @@ const criarIconeDeMarcador = (cor) => {
   });
 };
 
-const MapaComMarcadores = ({ onMarkerClick, children }) => {
-  const [relatorios, setRelatorios] = useState([]);
-
-  useEffect(() => {
-    fetch('http://localhost:8000/api/reports')
-      .then(res => res.json())
-      .then(data => {
-        const vistos = new Set();
-        const unicos = [];
-        for (const r of data) {
-          if (!vistos.has(r.microcontroller_id)) {
-            vistos.add(r.microcontroller_id);
-            unicos.push(r);
-          }
-        }
-        setRelatorios(unicos);
-      })
-      .catch(err => console.error("Erro ao buscar relatórios:", err));
-  }, []);
+const MapaComMarcadores = ({ reports, onMarkerClick, children }) => {
 
   return (
     <MapContainer center={[-3.7849, -38.556]} zoom={15} style={{ height: '100vh', width: '100%' }}>
-
       {children}
-      
       <TileLayer
         attribution='&copy; OpenStreetMap contributors'
         url='https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png'
       />
       
-      {relatorios.map((report) => {
-        const corDoMarcador = gerarCorDinamica(report.avg_db)
-        const iconeDinamico = criarIconeDeMarcador(corDoMarcador);
+      {reports
+        .filter(report => report.latitude != null && report.longitude != null)
+        .map((report) => {
+          const corDoMarcador = gerarCorDinamica(report.avg_db);
+          const iconeDinamico = criarIconeDeMarcador(corDoMarcador);
 
-        return (
-          <Marker
-            key={report.report_id}
-            position={[report.latitude, report.longitude]}
-            eventHandlers={{
-              click: () => onMarkerClick(report)
-            }}
-            icon={iconeDinamico}
-          >
-            <Popup>
-              <b>Sensor #{report.microcontroller_id}</b><br />
-              <b>Média: {report.avg_db.toFixed(2)} dB</b><br />
-              Mínimo: {report.min_db.toFixed(2)} dB<br />
-              Máximo: {report.max_db.toFixed(2)} dB<br />
-              {new Date(report.timestamp).toLocaleString('pt-BR')}
-            </Popup>
-          </Marker>
-        );
+          return (
+            <Marker
+              key={report.report_id}
+              position={[report.latitude, report.longitude]}
+              eventHandlers={{
+                click: () => onMarkerClick(report)
+              }}
+              icon={iconeDinamico}
+            >
+              <Popup>
+                <b>Sensor #{report.microcontroller_id}</b><br />
+                <b>Média: {(report.avg_db ?? 0).toFixed(2)} dB</b><br />
+                Mínimo: {(report.min_db ?? 0).toFixed(2)} dB<br />
+                Máximo: {(report.max_db ?? 0).toFixed(2)} dB<br />
+                {new Date(report.timestamp).toLocaleString('pt-BR')}
+              </Popup>
+            </Marker>
+          );
       })}
     </MapContainer>
   );
